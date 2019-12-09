@@ -15,6 +15,7 @@ const config = {
     faucetName: process.env.FAUCET_NAME || "Signet Faucet",
     // two options: rate limiting via IP address, OR rate limiting by requiring a pass phrase
     // if faucetPassword is unset, IP rate limiting is enforced, otherwise it is not
+    symbol: process.env.FAUCET_SYMBOL || 'tBTG',
     faucetPassword: process.env.FAUCET_PASSWORD,
     // several maximums in place to prevent someone from claiming too much too quickly
     faucetHourMax: (process.env.FAUCET_HOUR_MAX || 100) * BTC,
@@ -25,6 +26,7 @@ const config = {
     // we expect 10 people to claim coins from the faucet each hour, so we will by default
     // send (hour remaining coins)/10 coins, with a lower cap of faucetMin
     faucetHourSplit: process.env.FAUCET_HOUR_SPLIT || 10,
+    debugAllowDirectAccess: (process.env.DEBUG_ALLOW_DIRECT_ACCESS == 'true') || false
 };
 
 module.exports = config;
