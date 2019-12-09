@@ -21,7 +21,7 @@ const check = (req, res, cb) => {
     if (config.faucetPassword) return cb(null); // we don't support banning when password is enabled
 
     const ip = req.headers["x-real-ip"];
-    if (!ip || `{ip}` === "undefined") {
+    if (!config.debugAllowDirectAccess && (!ip || `{ip}` === "undefined")) {
         return cb('Internal error (IP)');
     }
     if (!fs.existsSync('banned.txt')) return cb(null);
@@ -65,6 +65,17 @@ const calc_payout = (cb) => {
     model.claim.calc_amount(cb);
 }
 
+function awrap(f) {
+    return function() {
+        return new Promise((resolve, reject) => {
+            f(...arguments, (err, result) => {
+                if (err) reject(err);
+                else resolve(result);
+            })
+        })
+    }
+}
+
 // let visitorCheck;
 let visitorVisit;
 if (config.faucetPassword) {
@@ -89,9 +100,17 @@ app.use(session({
 }));
 
 app.get('/', (req, res) => {
-    connect(req, res, (err) => {
+    connect(req, res, async (err) => {
+        const [balance, amountSat] = await Promise.all([
+            bitcoin.getBalance(),
+            awrap(calc_payout)()]);
         if (err) return res.send(err);
-        render(req, res, 'index', { faucetName: config.faucetName, faucetUsePass: config.faucetPassword ? true : false });
+        render(req, res, 'index', {
+            faucetName: config.faucetName, faucetUsePass: config.faucetPassword ? true : false,
+            balance: balance,
+            toPay: amountSat / 1e8,
+            symbol: config.symbol
+        });
     });
 });
 
