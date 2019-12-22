@@ -16,13 +16,23 @@ const model = {
     claim: require('./models/claim'),
 };
 
+function getRealIp (req) {
+    const fields = ['CF-Connecting-IP', 'True-Client-IP', 'x-real-ip'];
+    for (let f of fields) {
+        let name = f.toLowerCase();
+        let value = req.headers[name];
+        if (value) return value;
+    }
+    return undefined;
+}
+
 const check = (req, res, cb) => {
     const fs = require('fs');
     if (config.faucetPassword) return cb(null); // we don't support banning when password is enabled
 
-    const ip = req.headers["x-real-ip"];
+    const ip = getRealIp(req);
     if (!config.debugAllowDirectAccess && (!ip || `{ip}` === "undefined")) {
-        return cb('Internal error (IP)');
+        return cb('Internal error (No real IP dected. Not setting the reverse proxy correctly?)');
     }
     if (!fs.existsSync('banned.txt')) return cb(null);
     const lr = require('readline').createInterface({
@@ -101,35 +111,41 @@ app.use(session({
 
 app.get('/', (req, res) => {
     connect(req, res, async (err) => {
-        const [balance, amountSat] = await Promise.all([
-            bitcoin.getBalance(),
-            awrap(calc_payout)()]);
         if (err) return res.send(err);
-        render(req, res, 'index', {
-            faucetName: config.faucetName, faucetUsePass: config.faucetPassword ? true : false,
-            balance: balance,
-            toPay: amountSat / 1e8,
-            symbol: config.symbol
-        });
+        try {
+            const [balance, amountSat] = await Promise.all([
+                bitcoin.getBalance(),
+                awrap(calc_payout)()]);
+            const ipaddr = getRealIp(req) || '(unknown)';
+            render(req, res, 'index', {
+                faucetName: config.faucetName, faucetUsePass: config.faucetPassword ? true : false,
+                balance: balance,
+                toPay: amountSat / 1e8,
+                symbol: config.symbol,
+                ip: ipaddr,
+            });
+        } catch (err) {
+            res.send(err.message);
+        }
     });
 });
 
 app.post('/claim', (req, res) => {
     connect(req, res, (err) => {
         if (err) return res.send(err);
-        const ipaddr = req.headers["x-real-ip"];
+        const ipaddr = getRealIp(req);
         const { address } = req.body;
         if (address.length < 10 || address.length > 50) return res.send('Invalid address');
         if (address.match(/^[a-zA-Z0-9]+$/) === null) return res.send('Invalid address');
         calc_payout((err2, amount) => {
             if (err2) return res.send(err2);
             visitorVisit(req, res, ipaddr, 'faucet', (err3) => {
-                if (err3) return res.send('Nuh-uh');
+                if (err3) return res.send('Nuh-uh: ' + err3);
                 bitcoin.sendToAddress(address, sat2BTC(amount), (err4, result) => {
                     console.log(`send ${amount} to ${address} ${JSON.stringify(err4)} ${JSON.stringify(result)}`);
                     if (err4) return res.send('Internal error');
                     model.claim.record(new Date().getTime(), amount, (err5) => {
-                        res.send(`Payment of ${sat2BTC(amount)} BTC sent with txid ${result.result}`);
+                        res.send(`Payment of ${sat2BTC(amount)} ${config.symbol} sent with txid ${result.result}`);
                     });
                 });
             });
