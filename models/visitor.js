@@ -2,7 +2,7 @@ const db = require('../db');
 const assert = require('assert');
 
 const category_limits = {
-    faucet: 1,
+    faucet: 5,
 };
 
 const model = {
@@ -27,7 +27,7 @@ const model = {
             db.find('visitor', { ip, category }, (err, res) => {
                 console.log(`${new Date()} [DDoS:${category}]: ${ip} == ${res.length}${res.length >= maxreqs ? `>=` : `<`} ${maxreqs}`);
                 if (err) return cb("internal error");
-                if (res.length >= maxreqs) return cb("Too many requests, try again later");
+                if (res.length >= maxreqs) return cb(`Too many requests, try again later (${res.length}/${maxreqs} per day)`);
                 db.insert(
                     'visitor',
                     { ip, category, seen },
